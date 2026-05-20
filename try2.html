@@ -1,0 +1,811 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <title>AR Model Viewer</title>
+
+  <!-- Google model-viewer CDN -->
+  <script type="module" src="https://unpkg.com/@google/model-viewer/dist/model-viewer.min.js"></script>
+
+  <style>
+    /* ─── Design tokens ─────────────────────────────────────────────── */
+    :root {
+      --bg:        #0b0d11;
+      --surface:   #13161d;
+      --border:    #1e2330;
+      --accent:    #00e5ff;
+      --accent2:   #7c5cfc;
+      --text:      #e8ecf4;
+      --muted:     #6b7280;
+      --danger:    #ff4d6d;
+      --radius:    12px;
+      --font-mono: 'DM Mono', 'Fira Code', monospace;
+      --font-sans: 'Syne', 'Segoe UI', sans-serif;
+    }
+
+    /* ─── Reset / base ──────────────────────────────────────────────── */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    @import url('https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Mono:wght@300;400;500&display=swap');
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: var(--font-sans);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* ─── Header ────────────────────────────────────────────────────── */
+    header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 16px 28px;
+      border-bottom: 1px solid var(--border);
+      background: var(--surface);
+      position: sticky;
+      top: 0;
+      z-index: 100;
+    }
+
+    .logo {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-size: 1.1rem;
+      font-weight: 800;
+      letter-spacing: -0.02em;
+    }
+
+    .logo-icon {
+      width: 30px; height: 30px;
+      background: linear-gradient(135deg, var(--accent2), var(--accent));
+      border-radius: 8px;
+      display: grid;
+      place-items: center;
+      font-size: 14px;
+    }
+
+    .badge {
+      font-family: var(--font-mono);
+      font-size: 0.6rem;
+      background: color-mix(in srgb, var(--accent) 12%, transparent);
+      color: var(--accent);
+      border: 1px solid color-mix(in srgb, var(--accent) 30%, transparent);
+      padding: 2px 8px;
+      border-radius: 999px;
+      letter-spacing: 0.08em;
+    }
+
+    .header-actions {
+      display: flex;
+      gap: 10px;
+      align-items: center;
+    }
+
+    /* ─── Layout ────────────────────────────────────────────────────── */
+    .main {
+      flex: 1;
+      display: grid;
+      grid-template-columns: 320px 1fr;
+      gap: 0;
+      height: calc(100vh - 61px);
+    }
+
+    /* ─── Sidebar ───────────────────────────────────────────────────── */
+    .sidebar {
+      background: var(--surface);
+      border-right: 1px solid var(--border);
+      padding: 20px;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+    }
+
+    .sidebar-section-title {
+      font-family: var(--font-mono);
+      font-size: 0.65rem;
+      letter-spacing: 0.12em;
+      color: var(--muted);
+      text-transform: uppercase;
+      margin-bottom: 10px;
+    }
+
+    /* Drop zone */
+    .drop-zone {
+      border: 2px dashed var(--border);
+      border-radius: var(--radius);
+      padding: 28px 16px;
+      text-align: center;
+      cursor: pointer;
+      transition: border-color 0.2s, background 0.2s;
+      position: relative;
+    }
+    .drop-zone:hover, .drop-zone.drag-over {
+      border-color: var(--accent);
+      background: color-mix(in srgb, var(--accent) 5%, transparent);
+    }
+    .drop-zone input[type="file"] {
+      position: absolute; inset: 0; opacity: 0; cursor: pointer; width: 100%; height: 100%;
+    }
+    .drop-icon { font-size: 2rem; margin-bottom: 8px; }
+    .drop-title { font-weight: 700; font-size: 0.9rem; margin-bottom: 4px; }
+    .drop-sub   { font-size: 0.75rem; color: var(--muted); }
+
+    /* URL input */
+    .input-group {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+    .input-group label {
+      font-family: var(--font-mono);
+      font-size: 0.72rem;
+      color: var(--muted);
+    }
+    .input-row {
+      display: flex;
+      gap: 6px;
+    }
+    .input-row input {
+      flex: 1;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      color: var(--text);
+      font-family: var(--font-mono);
+      font-size: 0.78rem;
+      padding: 8px 12px;
+      outline: none;
+      transition: border-color 0.2s;
+    }
+    .input-row input:focus { border-color: var(--accent); }
+    .input-row input::placeholder { color: var(--muted); }
+
+    /* Buttons */
+    .btn {
+      border: none;
+      border-radius: 8px;
+      padding: 8px 14px;
+      cursor: pointer;
+      font-family: var(--font-sans);
+      font-weight: 600;
+      font-size: 0.82rem;
+      transition: opacity 0.2s, transform 0.1s;
+      white-space: nowrap;
+    }
+    .btn:active { transform: scale(0.97); }
+    .btn-primary {
+      background: linear-gradient(135deg, var(--accent2), var(--accent));
+      color: #000;
+    }
+    .btn-ghost {
+      background: transparent;
+      border: 1px solid var(--border);
+      color: var(--text);
+    }
+    .btn-ghost:hover { border-color: var(--muted); }
+    .btn-danger {
+      background: color-mix(in srgb, var(--danger) 15%, transparent);
+      color: var(--danger);
+      border: 1px solid color-mix(in srgb, var(--danger) 30%, transparent);
+    }
+    .btn-sm { padding: 5px 10px; font-size: 0.75rem; }
+    .btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+    /* Sample models */
+    .model-list {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+    .model-item {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 9px 12px;
+      border-radius: 8px;
+      border: 1px solid var(--border);
+      cursor: pointer;
+      transition: background 0.15s, border-color 0.15s;
+      font-size: 0.82rem;
+    }
+    .model-item:hover { background: color-mix(in srgb, var(--accent) 6%, transparent); border-color: color-mix(in srgb, var(--accent) 30%, transparent); }
+    .model-item.active { background: color-mix(in srgb, var(--accent) 10%, transparent); border-color: var(--accent); }
+    .model-icon { font-size: 1.1rem; width: 24px; text-align: center; }
+    .model-name { font-weight: 600; }
+    .model-fmt  { font-family: var(--font-mono); font-size: 0.65rem; color: var(--muted); margin-left: auto; }
+
+    /* Controls */
+    .control-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+    }
+    .toggle-btn {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 8px 10px;
+      border-radius: 8px;
+      border: 1px solid var(--border);
+      background: var(--bg);
+      color: var(--text);
+      cursor: pointer;
+      font-size: 0.78rem;
+      font-family: var(--font-sans);
+      font-weight: 600;
+      transition: all 0.15s;
+    }
+    .toggle-btn.on { background: color-mix(in srgb, var(--accent) 10%, transparent); border-color: var(--accent); color: var(--accent); }
+    .toggle-btn .dot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+
+    /* Slider */
+    .slider-group {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+    .slider-label {
+      display: flex;
+      justify-content: space-between;
+      font-family: var(--font-mono);
+      font-size: 0.72rem;
+      color: var(--muted);
+    }
+    input[type="range"] {
+      width: 100%;
+      accent-color: var(--accent);
+      cursor: pointer;
+    }
+
+    /* Status chip */
+    .status {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-family: var(--font-mono);
+      font-size: 0.7rem;
+      padding: 6px 10px;
+      border-radius: 8px;
+      border: 1px solid var(--border);
+      background: var(--bg);
+    }
+    .status-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--muted); }
+    .status.loaded .status-dot { background: #4ade80; box-shadow: 0 0 6px #4ade80; }
+    .status.error  .status-dot { background: var(--danger); box-shadow: 0 0 6px var(--danger); }
+
+    /* ─── Viewer ────────────────────────────────────────────────────── */
+    .viewer-area {
+      position: relative;
+      background: radial-gradient(ellipse at 50% 40%, #0f1420 0%, var(--bg) 80%);
+      overflow: hidden;
+    }
+
+    /* Grid floor overlay */
+    .viewer-area::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background-image:
+        linear-gradient(var(--border) 1px, transparent 1px),
+        linear-gradient(90deg, var(--border) 1px, transparent 1px);
+      background-size: 48px 48px;
+      mask-image: radial-gradient(ellipse 80% 60% at 50% 100%, black 30%, transparent 80%);
+      opacity: 0.4;
+      pointer-events: none;
+    }
+
+    model-viewer {
+      width: 100%;
+      height: 100%;
+      background: transparent;
+      --progress-bar-color: var(--accent);
+      --progress-bar-height: 3px;
+    }
+
+    /* AR button override */
+    model-viewer::part(default-ar-button) {
+      bottom: 24px;
+      right: 24px;
+    }
+
+    /* Empty state */
+    .empty-state {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 12px;
+      pointer-events: none;
+      opacity: 1;
+      transition: opacity 0.4s;
+    }
+    .empty-state.hidden { opacity: 0; }
+    .empty-icon { font-size: 4rem; opacity: 0.3; }
+    .empty-text { font-size: 1rem; font-weight: 600; opacity: 0.4; }
+    .empty-sub  { font-size: 0.8rem; color: var(--muted); opacity: 0.6; }
+
+    /* AR hint overlay */
+    .ar-hint {
+      position: absolute;
+      bottom: 90px;
+      right: 24px;
+      background: color-mix(in srgb, var(--surface) 90%, transparent);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 10px 14px;
+      font-size: 0.75rem;
+      color: var(--muted);
+      max-width: 200px;
+      line-height: 1.5;
+      backdrop-filter: blur(8px);
+      display: none;
+    }
+    .ar-hint.visible { display: block; }
+
+    /* Viewer top-right info */
+    .viewer-info {
+      position: absolute;
+      top: 16px;
+      right: 16px;
+      display: flex;
+      flex-direction: column;
+      align-items: flex-end;
+      gap: 6px;
+      pointer-events: none;
+    }
+    .viewer-chip {
+      font-family: var(--font-mono);
+      font-size: 0.65rem;
+      background: color-mix(in srgb, var(--surface) 85%, transparent);
+      border: 1px solid var(--border);
+      padding: 4px 10px;
+      border-radius: 999px;
+      backdrop-filter: blur(6px);
+      color: var(--muted);
+    }
+    .viewer-chip.accent { color: var(--accent); border-color: color-mix(in srgb, var(--accent) 30%, transparent); }
+
+    /* ─── Embed snippet panel ───────────────────────────────────────── */
+    .embed-panel {
+      position: absolute;
+      bottom: 0; left: 0; right: 0;
+      background: var(--surface);
+      border-top: 1px solid var(--border);
+      padding: 16px 20px;
+      transform: translateY(100%);
+      transition: transform 0.3s cubic-bezier(.4,0,.2,1);
+      z-index: 10;
+    }
+    .embed-panel.open { transform: translateY(0); }
+    .embed-panel-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 10px;
+    }
+    .embed-panel-title { font-weight: 700; font-size: 0.9rem; }
+    .embed-code {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 12px;
+      font-family: var(--font-mono);
+      font-size: 0.72rem;
+      color: #a5d6ff;
+      line-height: 1.6;
+      white-space: pre;
+      overflow-x: auto;
+      max-height: 140px;
+    }
+    .embed-actions {
+      display: flex;
+      gap: 8px;
+      margin-top: 10px;
+    }
+
+    /* Scrollbar */
+    ::-webkit-scrollbar { width: 4px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+
+    /* ─── Mobile responsive ─────────────────────────────────────────── */
+    @media (max-width: 700px) {
+      .main { grid-template-columns: 1fr; grid-template-rows: auto 1fr; height: auto; }
+      .sidebar { height: auto; }
+      .viewer-area { height: 70vw; min-height: 320px; }
+    }
+  </style>
+</head>
+<body>
+
+<!-- ─── Header ──────────────────────────────────────────────────────── -->
+<header>
+  <div class="logo">
+    <div class="logo-icon">⬡</div>
+    AR Viewer
+    <span class="badge">model-viewer</span>
+  </div>
+  <div class="header-actions">
+    <button class="btn btn-ghost btn-sm" id="btnEmbed">⟨/⟩ Embed</button>
+    <button class="btn btn-primary btn-sm" id="btnAR">Launch AR ↗</button>
+  </div>
+</header>
+
+<!-- ─── Main layout ──────────────────────────────────────────────────── -->
+<div class="main">
+
+  <!-- SIDEBAR -->
+  <aside class="sidebar">
+
+    <!-- Load model section -->
+    <div>
+      <div class="sidebar-section-title">Load Model</div>
+
+      <div class="drop-zone" id="dropZone">
+        <input type="file" id="fileInput" accept=".glb,.gltf,.usdz" />
+        <div class="drop-icon">📦</div>
+        <div class="drop-title">Drop .glb / .gltf here</div>
+        <div class="drop-sub">or click to browse</div>
+      </div>
+
+      <div style="margin-top: 10px; text-align: center; font-size: 0.72rem; color: var(--muted);">— or load from URL —</div>
+
+      <div class="input-group" style="margin-top: 8px;">
+        <label>Model URL (.glb / .gltf)</label>
+        <div class="input-row">
+          <input type="text" id="modelUrl" placeholder="https://…/model.glb" />
+          <button class="btn btn-primary btn-sm" id="btnLoad">Load</button>
+        </div>
+      </div>
+
+      <div class="input-group" style="margin-top: 8px;">
+        <label>iOS USDZ URL (optional)</label>
+        <div class="input-row">
+          <input type="text" id="usdzUrl" placeholder="https://…/model.usdz" />
+        </div>
+      </div>
+    </div>
+
+    <!-- Status -->
+    <div class="status" id="statusChip">
+      <div class="status-dot"></div>
+      <span id="statusText">No model loaded</span>
+    </div>
+
+    <!-- Sample models -->
+    <div>
+      <div class="sidebar-section-title">Sample Models</div>
+      <div class="model-list">
+        <div class="model-item" data-src="https://modelviewer.dev/shared-assets/models/Astronaut.glb" data-usdz="">
+          <span class="model-icon">🧑‍🚀</span>
+          <span class="model-name">Astronaut</span>
+          <span class="model-fmt">GLB</span>
+        </div>
+        <div class="model-item" data-src="https://modelviewer.dev/shared-assets/models/RobotExpressive/RobotExpressive.glb" data-usdz="">
+          <span class="model-icon">🤖</span>
+          <span class="model-name">Robot (Animated)</span>
+          <span class="model-fmt">GLB</span>
+        </div>
+        <div class="model-item" data-src="https://modelviewer.dev/shared-assets/models/NeilArmstrong.glb" data-usdz="">
+          <span class="model-icon">👨‍🦳</span>
+          <span class="model-name">Neil Armstrong</span>
+          <span class="model-fmt">GLB</span>
+        </div>
+        <div class="model-item" data-src="https://modelviewer.dev/shared-assets/models/ShopifyModels/Chair.glb" data-usdz="">
+          <span class="model-icon">🪑</span>
+          <span class="model-name">Chair</span>
+          <span class="model-fmt">GLB</span>
+        </div>
+        <div class="model-item" data-src="https://modelviewer.dev/shared-assets/models/ShopifyModels/Canoe.glb" data-usdz="">
+          <span class="model-icon">🛶</span>
+          <span class="model-name">Canoe</span>
+          <span class="model-fmt">GLB</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Controls -->
+    <div>
+      <div class="sidebar-section-title">Viewer Controls</div>
+      <div class="control-grid">
+        <button class="toggle-btn on" id="toggleRotate"><span class="dot"></span>Auto-Rotate</button>
+        <button class="toggle-btn on" id="toggleCamera"><span class="dot"></span>Camera Ctrl</button>
+        <button class="toggle-btn on" id="toggleShadow"><span class="dot"></span>Shadow</button>
+        <button class="toggle-btn off" id="toggleWireframe"><span class="dot"></span>Wireframe</button>
+      </div>
+    </div>
+
+    <!-- Exposure -->
+    <div>
+      <div class="sidebar-section-title">Lighting</div>
+      <div class="slider-group">
+        <div class="slider-label"><span>Exposure</span><span id="expVal">1.0</span></div>
+        <input type="range" id="exposure" min="0.1" max="3" step="0.05" value="1.0" />
+      </div>
+      <div class="slider-group" style="margin-top: 10px;">
+        <div class="slider-label"><span>Shadow Intensity</span><span id="shadowVal">1.0</span></div>
+        <input type="range" id="shadowIntensity" min="0" max="2" step="0.05" value="1.0" />
+      </div>
+    </div>
+
+    <!-- Reset -->
+    <button class="btn btn-danger btn-sm" id="btnReset" style="margin-top: auto;">Reset Viewer</button>
+
+  </aside>
+
+  <!-- VIEWER -->
+  <div class="viewer-area">
+
+    <!-- Info overlay -->
+    <div class="viewer-info">
+      <div class="viewer-chip accent" id="modelNameChip">No model</div>
+      <div class="viewer-chip" id="arSupportChip">AR: checking…</div>
+    </div>
+
+    <!-- Empty state -->
+    <div class="empty-state" id="emptyState">
+      <div class="empty-icon">⬡</div>
+      <div class="empty-text">No model loaded</div>
+      <div class="empty-sub">Choose a sample or drop a .glb file</div>
+    </div>
+
+    <!-- AR hint -->
+    <div class="ar-hint" id="arHint">
+      📱 Open on a mobile device with ARCore / iOS AR Quick Look to use AR placement.
+    </div>
+
+    <!-- THE model-viewer ELEMENT -->
+    <model-viewer
+      id="viewer"
+      alt="3D model"
+      camera-controls
+      auto-rotate
+      shadow-intensity="1"
+      exposure="1"
+      ar
+      ar-modes="webxr scene-viewer quick-look"
+      ar-scale="auto"
+      style="width:100%;height:100%;background:transparent;"
+    ></model-viewer>
+
+    <!-- Embed panel -->
+    <div class="embed-panel" id="embedPanel">
+      <div class="embed-panel-header">
+        <div class="embed-panel-title">⟨/⟩ Embed Snippet</div>
+        <button class="btn btn-ghost btn-sm" id="btnCloseEmbed">✕ Close</button>
+      </div>
+      <pre class="embed-code" id="embedCode"><!-- Load a model first --></pre>
+      <div class="embed-actions">
+        <button class="btn btn-primary btn-sm" id="btnCopyEmbed">Copy HTML</button>
+        <button class="btn btn-ghost btn-sm" id="btnCopyTag">Copy ⟨model-viewer⟩ only</button>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<script>
+  // ─── State ──────────────────────────────────────────────────────────
+  const viewer    = document.getElementById('viewer');
+  const fileInput = document.getElementById('fileInput');
+  const dropZone  = document.getElementById('dropZone');
+  const modelUrl  = document.getElementById('modelUrl');
+  const usdzUrl   = document.getElementById('usdzUrl');
+  const statusChip   = document.getElementById('statusChip');
+  const statusText   = document.getElementById('statusText');
+  const emptyState   = document.getElementById('emptyState');
+  const arHint       = document.getElementById('arHint');
+  const modelNameChip = document.getElementById('modelNameChip');
+  const arSupportChip = document.getElementById('arSupportChip');
+
+  let currentObjectUrl = null;
+  let currentModelName = '';
+
+  // ─── Load model ─────────────────────────────────────────────────────
+  function loadModel(src, usdz = '', name = '') {
+    if (currentObjectUrl) {
+      URL.revokeObjectURL(currentObjectUrl);
+      currentObjectUrl = null;
+    }
+    viewer.src = src;
+    viewer.setAttribute('ios-src', usdz || '');
+    currentModelName = name || src.split('/').pop();
+    modelNameChip.textContent = currentModelName;
+    emptyState.classList.add('hidden');
+    setStatus('loading', 'Loading…');
+
+    // highlight active sample
+    document.querySelectorAll('.model-item').forEach(el =>
+      el.classList.toggle('active', el.dataset.src === src)
+    );
+  }
+
+  // ─── File drop / pick ────────────────────────────────────────────────
+  fileInput.addEventListener('change', e => {
+    const file = e.target.files[0];
+    if (!file) return;
+    currentObjectUrl = URL.createObjectURL(file);
+    loadModel(currentObjectUrl, '', file.name);
+  });
+
+  dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('drag-over'); });
+  dropZone.addEventListener('dragleave', () => dropZone.classList.remove('drag-over'));
+  dropZone.addEventListener('drop', e => {
+    e.preventDefault(); dropZone.classList.remove('drag-over');
+    const file = e.dataTransfer.files[0];
+    if (!file) return;
+    currentObjectUrl = URL.createObjectURL(file);
+    loadModel(currentObjectUrl, '', file.name);
+  });
+
+  // ─── URL load ────────────────────────────────────────────────────────
+  document.getElementById('btnLoad').addEventListener('click', () => {
+    const src = modelUrl.value.trim();
+    if (!src) return;
+    loadModel(src, usdzUrl.value.trim());
+  });
+  modelUrl.addEventListener('keydown', e => e.key === 'Enter' && document.getElementById('btnLoad').click());
+
+  // ─── Sample models ───────────────────────────────────────────────────
+  document.querySelectorAll('.model-item').forEach(el => {
+    el.addEventListener('click', () => loadModel(el.dataset.src, el.dataset.usdz || '', el.querySelector('.model-name').textContent));
+  });
+
+  // ─── model-viewer events ─────────────────────────────────────────────
+  viewer.addEventListener('load', () => setStatus('loaded', `Loaded: ${currentModelName}`));
+  viewer.addEventListener('error', () => setStatus('error', 'Failed to load model'));
+
+  function setStatus(type, msg) {
+    statusChip.className = 'status ' + type;
+    statusText.textContent = msg;
+  }
+
+  // Check AR support after a moment
+  setTimeout(() => {
+    if (viewer.canActivateAR) {
+      arSupportChip.textContent = 'AR: Supported ✓';
+      arSupportChip.style.color = 'var(--accent)';
+    } else {
+      arSupportChip.textContent = 'AR: Desktop (use mobile)';
+      arHint.classList.add('visible');
+    }
+  }, 600);
+
+  // ─── Header AR button ────────────────────────────────────────────────
+  document.getElementById('btnAR').addEventListener('click', () => {
+    if (viewer.canActivateAR) {
+      viewer.activateAR();
+    } else {
+      arHint.classList.toggle('visible');
+    }
+  });
+
+  // ─── Toggle controls ─────────────────────────────────────────────────
+  function makeToggle(btnId, onAction, offAction) {
+    const btn = document.getElementById(btnId);
+    btn.addEventListener('click', () => {
+      const isOn = btn.classList.contains('on');
+      btn.classList.toggle('on', !isOn);
+      btn.classList.toggle('off', isOn);
+      isOn ? offAction() : onAction();
+    });
+  }
+
+  makeToggle('toggleRotate',
+    () => { viewer.setAttribute('auto-rotate', ''); },
+    () => { viewer.removeAttribute('auto-rotate'); }
+  );
+  makeToggle('toggleCamera',
+    () => { viewer.setAttribute('camera-controls', ''); },
+    () => { viewer.removeAttribute('camera-controls'); }
+  );
+  makeToggle('toggleShadow',
+    () => { viewer.setAttribute('shadow-intensity', document.getElementById('shadowIntensity').value); },
+    () => { viewer.setAttribute('shadow-intensity', '0'); }
+  );
+
+  let wireframe = false;
+  document.getElementById('toggleWireframe').addEventListener('click', function() {
+    wireframe = !wireframe;
+    this.classList.toggle('on', wireframe);
+    this.classList.toggle('off', !wireframe);
+    try {
+      const model = viewer.model;
+      if (model) {
+        model.materials.forEach(mat => {
+          mat.setWireframe && mat.setWireframe(wireframe);
+        });
+      }
+    } catch(e) {}
+  });
+
+  // ─── Sliders ─────────────────────────────────────────────────────────
+  const expSlider = document.getElementById('exposure');
+  expSlider.addEventListener('input', () => {
+    viewer.exposure = parseFloat(expSlider.value);
+    document.getElementById('expVal').textContent = parseFloat(expSlider.value).toFixed(2);
+  });
+
+  const shadowSlider = document.getElementById('shadowIntensity');
+  shadowSlider.addEventListener('input', () => {
+    viewer.shadowIntensity = parseFloat(shadowSlider.value);
+    document.getElementById('shadowVal').textContent = parseFloat(shadowSlider.value).toFixed(2);
+  });
+
+  // ─── Reset ───────────────────────────────────────────────────────────
+  document.getElementById('btnReset').addEventListener('click', () => {
+    viewer.src = '';
+    viewer.setAttribute('ios-src', '');
+    emptyState.classList.remove('hidden');
+    modelNameChip.textContent = 'No model';
+    setStatus('', 'No model loaded');
+    modelUrl.value = '';
+    usdzUrl.value = '';
+    document.querySelectorAll('.model-item').forEach(el => el.classList.remove('active'));
+  });
+
+  // ─── Embed panel ─────────────────────────────────────────────────────
+  const embedPanel = document.getElementById('embedPanel');
+  const embedCode  = document.getElementById('embedCode');
+
+  function buildEmbedTag() {
+    const src  = viewer.src || '';
+    const usdz = viewer.getAttribute('ios-src') || '';
+    const rot  = viewer.hasAttribute('auto-rotate') ? '\n  auto-rotate' : '';
+    const cam  = viewer.hasAttribute('camera-controls') ? '\n  camera-controls' : '';
+    const ios  = usdz ? `\n  ios-src="${usdz}"` : '';
+    return `<model-viewer
+  src="${src}"${ios}
+  alt="${currentModelName}"${rot}${cam}
+  ar
+  ar-modes="webxr scene-viewer quick-look"
+  shadow-intensity="${viewer.shadowIntensity ?? 1}"
+  exposure="${viewer.exposure ?? 1}"
+  style="width:600px;height:400px;">
+</model-viewer>`;
+  }
+
+  function buildFullEmbed() {
+    return `<!-- 1. Add this script once in <head> or before </body> -->
+<script type="module"
+  src="https://unpkg.com/@google/model-viewer/dist/model-viewer.min.js">
+<\/script>
+
+<!-- 2. Drop this tag wherever you need the viewer -->
+${buildEmbedTag()}`;
+  }
+
+  document.getElementById('btnEmbed').addEventListener('click', () => {
+    embedCode.textContent = buildFullEmbed();
+    embedPanel.classList.toggle('open');
+  });
+  document.getElementById('btnCloseEmbed').addEventListener('click', () => embedPanel.classList.remove('open'));
+
+  document.getElementById('btnCopyEmbed').addEventListener('click', () => {
+    navigator.clipboard.writeText(buildFullEmbed()).then(() => {
+      const btn = document.getElementById('btnCopyEmbed');
+      btn.textContent = 'Copied ✓';
+      setTimeout(() => btn.textContent = 'Copy HTML', 1500);
+    });
+  });
+  document.getElementById('btnCopyTag').addEventListener('click', () => {
+    navigator.clipboard.writeText(buildEmbedTag()).then(() => {
+      const btn = document.getElementById('btnCopyTag');
+      btn.textContent = 'Copied ✓';
+      setTimeout(() => btn.textContent = 'Copy ⟨model-viewer⟩ only', 1500);
+    });
+  });
+
+  // ─── Auto-load first sample on start ─────────────────────────────────
+  document.querySelector('.model-item').click();
+</script>
+</body>
+</html>
